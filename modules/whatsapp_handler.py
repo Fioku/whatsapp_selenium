@@ -1,10 +1,7 @@
-from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException
 import time
 import os
@@ -13,48 +10,65 @@ from PySide6.QtCore import QObject, Signal
 class Whatsapp_handler(QObject):
     finished = Signal()
 
-    def __init__(self, driver, to):
+    def __init__(self, driver, to1, to2=None):
         super().__init__()
         self.driver = driver
-        # self.main_number = '01068025122'
-        self.main_number = '01281727282'
-        self.to = to
+        self.main_number = open("phone.txt", "r").read().strip()
+        self.to1 = to1
+        self.to2 = to2
         
     def run(self):
         try:
             if not self.is_chat_open():
-                self.open_chat()
+                self.open_praivte_chat()
             time.sleep(1)
+            self.forward_message(self.to1)
+            time.sleep(2)
+            self.open_clint_chat()
+            time.sleep(2)
             self.forward_message()
-            time.sleep(5)
+            time.sleep(2)
+            self.open_praivte_chat()
+            time.sleep(9)
+            if self.to2:
+                self.forward_message(self.to2)
+                time.sleep(2)
+                self.open_clint_chat()
+                time.sleep(2)
+                self.forward_message()
+                time.sleep(2)
+                self.open_praivte_chat()
         finally:
             # self.driver.quit()
             self.finished.emit()
             
-    def open_chat(self):
-        element = WebDriverWait(self.driver, 100).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Search input textbox"]')))
-        element.click()
-        # time.sleep(1)
-        element.send_keys(self.main_number)
-        # time.sleep(1)
-        search_result = WebDriverWait(self.driver, 60).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[aria-label="Search results."]')))
-        for message in search_result:
-            try:
-                chat = WebDriverWait(message, 100).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'div.x1n2onr6.x14yjl9h.xudhj91.x18nykt9.xww2gxu')))
-                chat.click()
-                break
-            except TimeoutException:
-                print("Chat element is not clickable yet, continuing...")
+    def open_praivte_chat(self):
+        new_chat = WebDriverWait(self.driver, 100).until(
+            EC.any_of(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[title="New chat"]')),
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[title="دردشة جديدة"]'))
+            )
+        )
+        new_chat.click()
+        time.sleep(1)
+        search_input = WebDriverWait(self.driver, 100).until(
+            EC.any_of(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Search input textbox"]')),
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="خانة إدخال نص البحث"]'))
+            )
+        )
+        search_input.click()
+        search_input.send_keys(self.main_number)
+        time.sleep(3)
+        search_input.send_keys(Keys.RETURN)
 
-    def forward_message(self):
+    def forward_message(self, to=None):
         try:
             attachments_icon = WebDriverWait(self.driver, 60).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'span[data-icon="attach-menu-plus"]')))
             attachments_icon.click()
-            download_folder = os.path.join(os.path.expanduser("C:\ATTACHMENTS"))
+            f = open("path.txt", "r")
+            download_folder = os.path.join(os.path.expanduser(f.read().strip()))
             downloaded_files = sorted(os.listdir(download_folder), key=lambda x: os.path.getctime(os.path.join(download_folder, x)))
             file_path = os.path.join(download_folder, downloaded_files[-1])
             file_input = self.driver.find_elements(By.CSS_SELECTOR, 'input[type="file"]')[1]
@@ -63,8 +77,14 @@ class Whatsapp_handler(QObject):
             # time.sleep(1)
             
             message_input = WebDriverWait(self.driver, 60).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Add a caption"]')))
-            message_input.send_keys(self.to)
+                EC.any_of(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Add a caption"]')),
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="إضافة شرح"]'))
+                )
+            )
+            
+            if to:
+                message_input.send_keys(to)
             
             # time.sleep(1)
             
@@ -85,7 +105,11 @@ class Whatsapp_handler(QObject):
             # time.sleep(1)
             
             message_input = WebDriverWait(self.driver, 60).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Add a caption"]')))
+                EC.any_of(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Add a caption"]')),
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="إضافة شرح"]'))
+                )
+            )
             message_input.send_keys(self.to)
             
             # time.sleep(1)
@@ -94,10 +118,41 @@ class Whatsapp_handler(QObject):
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'span[data-icon="send"]')))
             send_button.click()
             
+    def open_clint_chat(self):
+        try:
+            last_message = self.get_messages_out()[-1]
+            self.open_customer_chat(last_message)
+        except Exception as e:
+            print(e)
+            
+    def get_messages_out(self):
+        messages_in = []
+        messages_div = WebDriverWait(self.driver, 60).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div._amjv._aotl')))
+        for message in messages_div:
+            if message.find_elements(By.CSS_SELECTOR, 'div.message-out'):
+                messages_in.append(message)
+        return messages_in
+    
+    def open_customer_chat(self, message):
+        phone_number_as_link = WebDriverWait(message, 60).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[dir="auto"]')))
+        phone_number_as_link.click()
+        customer_chat = WebDriverWait(self.driver, 60).until(
+            EC.any_of(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="Chat with "]')),
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'div[aria-label="الدردشة مع "]'))
+            )
+        )
+        customer_chat.click()
+            
     def is_chat_open(self):
         try:
             WebDriverWait(self.driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[aria-label="Type a message"]'))
+                EC.any_of(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'div[aria-label="Type a message"]')),
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'div[aria-label="اكتب رسالة"]'))
+                )
             )
             return True
         except TimeoutException:
