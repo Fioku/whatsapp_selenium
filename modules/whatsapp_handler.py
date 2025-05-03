@@ -16,8 +16,7 @@ class Whatsapp_handler(QObject):
     def __init__(self, driver, to):
         super().__init__()
         self.driver = driver
-        # self.main_number = '01068025122'
-        self.main_number = '01281727282'
+        self.main_number = '01212121212'
         self.to = to
         
     def run(self):
